@@ -276,3 +276,155 @@ test('snapshots from other origins or other windows cannot trigger speech', asyn
   f.snapshot();
   assert.equal(f.speeches.length, 1);
 });
+
+test('Natural flow preserves the complete delayed sentence as its opening words become visible', async () => {
+  const f = await fixture({ settings: { naturalFlow: true, leadMs: 0 } });
+  const sentence = `${words}.`;
+  const data = { question: sentence, cumulative: sentence.split(' ').map((_, i) => (i + 1) * 500) };
+  f.snapshot(data);
+  assert.equal(f.speeches.length, 0, 'the natural pace can wait before starting');
+  for (let i = 0; i < 4; i++) {
+    f.advance(500);
+    f.snapshot(data);
+    assert.equal(f.speeches.length, 0);
+  }
+  for (let i = 0; i < 10 && !f.speeches.length; i++) {
+    f.advance(100);
+    f.snapshot(data);
+  }
+  assert.equal(f.speeches.length, 1);
+  assert.equal(f.speeches[0].text, sentence, 'revealed opening words are retained while waiting');
+  assert.equal(f.speeches[0].naturalFlow, true);
+});
+
+test('Natural flow uses one utterance and one rate throughout a long active sentence', async () => {
+  const f = await fixture({ settings: { naturalFlow: true } });
+  const sentence = Array.from({ length: 40 }, (_, i) => i === 39 ? 'alpha.' : 'alpha').join(' ');
+  const data = { question: sentence, cumulative: sentence.split(' ').map((_, i) => (i + 1) * 180) };
+  f.snapshot(data);
+  assert.equal(f.speeches.length, 1);
+  const speech = f.speeches[0];
+  f.speech(speech.id, 'start');
+  for (let i = 1; i <= 6; i++) {
+    f.advance(1000);
+    f.speech(speech.id, 'word', { charIndex: i * 12 });
+    f.snapshot(data);
+    f.heartbeat();
+  }
+  assert.equal(f.speeches.length, 1, 'word reveals do not create new speech calls or rates');
+  assert.equal(f.speeches[0], speech);
+  assert.equal(f.stops.length, 0);
+  assert.equal(f.status.status, 'Reading');
+});
+
+test('toggling Natural flow on cancels the phrase and stale callbacks cannot consume its sentence', async () => {
+  const f = await fixture();
+  const data = { question: `${words}.` };
+  f.snapshot(data);
+  const old = f.speeches[0];
+  assert.equal(old.naturalFlow, false);
+  f.changeSettings({ naturalFlow: true });
+  assert.equal(f.stops.length, 1);
+  assert.equal(f.speeches.length, 2);
+  const current = f.speeches[1];
+  assert.equal(current.text, `${words}.`);
+  assert.equal(current.naturalFlow, true);
+  f.speech(old.id, 'word', { charIndex: old.text.length });
+  f.speech(old.id, 'end');
+  f.speech(old.id, 'error', { errorMessage: 'stale mode change callback' });
+  f.heartbeat();
+  assert.equal(f.speeches.length, 2);
+  assert.equal(f.status.status, 'Reading');
+});
+
+test('toggling Natural flow off restores bounded phrases without late sentence callbacks', async () => {
+  const f = await fixture({ settings: { naturalFlow: true } });
+  const data = { question: `${words}.` };
+  f.snapshot(data);
+  const sentence = f.speeches[0];
+  f.advance(500);
+  f.snapshot(data);
+  f.changeSettings({ naturalFlow: false });
+  assert.equal(f.stops.length, 1);
+  assert.equal(f.speeches.length, 2);
+  const phrase = f.speeches[1];
+  assert.equal(phrase.naturalFlow, false);
+  assert.ok(phrase.text.split(' ').length <= 8);
+  assert.match(phrase.text, /^bravo/);
+  f.speech(sentence.id, 'end');
+  f.speech(sentence.id, 'word', { charIndex: sentence.text.length });
+  f.heartbeat();
+  assert.equal(f.speeches.length, 2);
+  assert.equal(f.status.status, 'Reading');
+});
+
+test('buzzing stops a natural sentence and resumption speaks its remaining suffix in one utterance', async () => {
+  const f = await fixture({ settings: { naturalFlow: true } });
+  const data = { question: `${words}.` };
+  f.snapshot(data);
+  const sentence = f.speeches[0];
+  f.speech(sentence.id, 'start');
+  f.advance(600);
+  f.speech(sentence.id, 'word', { charIndex: sentence.text.indexOf('charlie') });
+  f.snapshot({ ...data, paused: true, buzzing: true });
+  assert.equal(f.stops.length, 1);
+  assert.equal(f.status.status, 'Buzzed');
+  f.advance(100);
+  f.snapshot({ ...data, elapsed: 600, paused: false, buzzing: false });
+  assert.equal(f.speeches.length, 2);
+  assert.equal(f.speeches[1].text, `${words.split(' ').slice(2).join(' ')}.`);
+  assert.equal(f.speeches[1].naturalFlow, true);
+});
+
+test('a sentence over 500 characters reaches the worker with its Natural flow transport flag', async () => {
+  const f = await fixture({ settings: { naturalFlow: true } });
+  const sentence = Array.from({ length: 55 }, (_, i) => `description${i}${i === 54 ? '.' : ''}`).join(' ');
+  const data = { question: sentence, cumulative: sentence.split(' ').map((_, i) => (i + 1) * 180) };
+  f.snapshot(data);
+  assert.equal(f.speeches.length, 1);
+  assert.ok(f.speeches[0].text.length > 500);
+  assert.equal(f.speeches[0].text, sentence);
+  assert.equal(f.speeches[0].naturalFlow, true);
+});
+
+test('pausing before a delayed natural sentence starts preserves its unheard opening on resume', async () => {
+  const f = await fixture({ settings: { naturalFlow: true, leadMs: 0 } });
+  const sentence = `${words}.`;
+  const data = { question: sentence, cumulative: sentence.split(' ').map((_, i) => (i + 1) * 500) };
+  f.snapshot(data);
+  f.advance(2000);
+  f.snapshot({ ...data, paused: true });
+  assert.equal(f.speeches.length, 0);
+  f.advance(5000);
+  f.snapshot({ ...data, elapsed: 2000, paused: true });
+  f.snapshot({ ...data, elapsed: 2000, paused: false });
+  for (let i = 1; i <= 10 && !f.speeches.length; i++) {
+    f.advance(100);
+    f.snapshot({ ...data, elapsed: 2000 + i * 100 });
+  }
+  assert.equal(f.speeches.length, 1);
+  assert.equal(f.speeches[0].text, sentence);
+});
+
+test('a paused natural sentence resumes from the spoken boundary even when the visual text is farther ahead', async () => {
+  const f = await fixture({ settings: { naturalFlow: true, leadMs: 0 } });
+  const sentence = `${words}.`;
+  const data = { question: sentence, cumulative: sentence.split(' ').map((_, i) => (i + 1) * 500) };
+  f.snapshot(data);
+  f.advance(3000);
+  f.snapshot(data);
+  assert.equal(f.speeches.length, 1);
+  const old = f.speeches[0];
+  f.speech(old.id, 'start');
+  f.advance(150);
+  f.speech(old.id, 'word', { charIndex: old.text.indexOf('bravo') });
+  f.snapshot({ ...data, paused: true, buzzing: true });
+  assert.equal(f.stops.length, 1);
+  f.advance(500);
+  f.snapshot({ ...data, elapsed: 3150, paused: false, buzzing: false });
+  assert.equal(f.speeches.length, 2);
+  assert.equal(f.speeches[1].text, `${words.split(' ').slice(1).join(' ')}.`);
+  f.speech(old.id, 'end');
+  f.heartbeat();
+  assert.equal(f.speeches.length, 2);
+});

@@ -68,8 +68,9 @@
       void message({ type: "report-status", status, detail, voiceName, lagMs });
     }
   }
-  function cancel() {
+  function cancel(preserveSentence = false) {
     if (active) {
+      if (preserveSentence && prefs.naturalFlow) nextIndex = Math.max(active.phrase.first, completedUntil);
       active = null; // Invalidate callbacks before stop generates interruption events.
       counter++;
       void message({ type: "stop" });
@@ -87,13 +88,20 @@
     }
     if (latest.finished) { cancel(); updateStatus("Question finished", "Ready for the next question."); return; }
     if (latest.paused || latest.buzzing) {
-      cancel(); rejoin(); updateStatus(latest.buzzing ? "Buzzed" : "Paused", "Speech follows the room and resumes with the question."); return;
+      cancel(true);
+      // A pending sentence may deliberately start after its opening appears.
+      // Preserve that opening through a room pause; resume interrupted speech
+      // from its last completed word, not from the independent visual cursor.
+      if (!prefs.naturalFlow) rejoin();
+      updateStatus(latest.buzzing ? "Buzzed" : "Paused", "Speech follows the room and resumes with the question."); return;
     }
     if (Date.now() < previewUntil) { cancel(); rejoin(); updateStatus("Voice preview", "Question reading resumes after the preview."); return; }
     if (Date.now() < retryAt) { updateStatus(error ? "Voice unavailable" : "Ready", error); return; }
     const s = { ...latest, elapsed: clock() };
     if (active) {
-      if (performance.now() - active.requestedAt > active.phrase.estimatedMs + calibration.latency + 1800) {
+      const timeout = active.phrase.mode === "sentence" ? Math.max(5000, active.phrase.estimatedMs * 2) + 1800 : active.phrase.estimatedMs + calibration.latency + 1800;
+      if (performance.now() - active.requestedAt > timeout &&
+          (active.phrase.mode !== "sentence" || performance.now() - active.lastProgressAt > 2000)) {
         // Voices without completion events must not block all later questions.
         nextIndex = active.phrase.nextIndex;
         completedUntil = nextIndex;
@@ -102,17 +110,17 @@
       } else { updateStatus("Reading", voiceName || "Matching the question reveal."); return; }
     }
     // Joining/rejoining does not recite old text or accumulate a long queue.
-    if (s.cumulative[nextIndex] < s.elapsed - 800) {
+    if (!prefs.naturalFlow && s.cumulative[nextIndex] < s.elapsed - 800) {
       nextIndex = Math.max(nextIndex, C.firstUnread(s, 120));
     }
     const phrase = C.makePhrase(s, nextIndex, prefs, calibration);
     if (!phrase) { updateStatus("Ready", "All question words have been read. Waiting for the next question."); return; }
-    if (s.elapsed < phrase.startAt) { updateStatus("Ready", "Following the room's reveal schedule."); return; }
+    if (s.elapsed + 1 < phrase.startAt) { updateStatus("Ready", "Following the room's reveal schedule."); return; }
     const id = `${questionId}/${++counter}`;
-    const run = { id, phrase, requestedAt: performance.now(), startedAt: null, firstWordAt: null };
+    const run = { id, phrase, requestedAt: performance.now(), lastProgressAt: performance.now(), startedAt: null, firstWordAt: null };
     active = run;
     updateStatus("Reading", voiceName || "Matching the question reveal.");
-    message({ type: "speak", id, text: phrase.text, voiceName: prefs.voiceName, rate: phrase.rate, volume: prefs.volume }).then(result => {
+    message({ type: "speak", id, text: phrase.text, naturalFlow: prefs.naturalFlow, voiceName: prefs.voiceName, rate: phrase.rate, volume: prefs.volume }).then(result => {
       if (active !== run) return;
       if (!result?.ok) {
         active = null;
@@ -135,8 +143,8 @@
       lagMs = undefined;
     } else if (latest && (snapshot.rate !== latest.rate ||
       (!latest.paused && !snapshot.paused && Math.abs(snapshot.elapsed - latest.elapsed - (performance.now() - receivedAt)) > 750))) {
-      cancel();
-      nextIndex = Math.max(completedUntil, C.firstUnread(snapshot, 120));
+      cancel(true);
+      if (!prefs.naturalFlow) nextIndex = Math.max(completedUntil, C.firstUnread(snapshot, 120));
     }
     latest = snapshot;
     receivedAt = performance.now();
@@ -148,6 +156,7 @@
     if (message.type !== "speech-event" || !active || message.id !== active.id) return;
     const run = active;
     const event = message.event;
+    run.lastProgressAt = performance.now();
     if (event.type === "start") {
       run.startedAt = performance.now();
     }
@@ -198,10 +207,10 @@
   // Stop locally at the buzz gesture, before the server round trip arrives.
   document.addEventListener("keydown", event => {
     const input = event.target instanceof Element && event.target.closest("input,textarea,select,[contenteditable=true]");
-    if (!input && (event.code === "Space" || event.code === "KeyB")) { cancel(); retryAt = Date.now() + 300; }
+    if (!input && (event.code === "Space" || event.code === "KeyB")) { cancel(true); retryAt = Date.now() + 300; }
   }, true);
   document.addEventListener("click", event => {
-    if (event.target instanceof Element && event.target.closest(".buzzbtn")) { cancel(); retryAt = Date.now() + 300; }
+    if (event.target instanceof Element && event.target.closest(".buzzbtn")) { cancel(true); retryAt = Date.now() + 300; }
   }, true);
   chrome.storage.local.get("settings").then(data => {
     prefs = C.settings(data.settings);

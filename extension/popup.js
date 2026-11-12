@@ -1,7 +1,7 @@
 "use strict";
 
 // Keep this UI independent of the page: playback is owned by the service worker.
-const DEFAULTS = { enabled: true, voiceName: "", rate: 1, volume: 1, leadMs: 80 };
+const DEFAULTS = { enabled: true, naturalFlow: false, voiceName: "", rate: 1, volume: 1, leadMs: 80 };
 const $ = (id) => document.getElementById(id);
 let settings = { ...DEFAULTS };
 let previewing = false;
@@ -16,6 +16,10 @@ function error(message = "") {
 
 function paintValues() {
   $("enabled").checked = settings.enabled;
+  $("natural-flow").checked = settings.naturalFlow === true;
+  $("timing-note").textContent = settings.naturalFlow
+    ? "Aims to finish each sentence with its final revealed word. Voice timing is approximate."
+    : "Speech aims to finish each word as it appears. Timing varies by voice.";
   $("rate").value = settings.rate;
   $("volume").value = settings.volume;
   $("lead").value = settings.leadMs;
@@ -139,6 +143,11 @@ async function initialize() {
 
   $("enabled").addEventListener("change", () => {
     settings.enabled = $("enabled").checked;
+    save();
+  });
+  $("natural-flow").addEventListener("change", () => {
+    settings.naturalFlow = $("natural-flow").checked;
+    paintValues();
     save();
   });
   $("voice").addEventListener("change", () => {

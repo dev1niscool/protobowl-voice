@@ -1,10 +1,10 @@
 # ProtoBowl Voice
 
-A Chrome extension that reads ProtoBowl questions aloud in short, flowing phrases, paced to the room's word-reveal schedule. No build step, account, API key, or subscription is required.
+A Chrome extension that reads ProtoBowl questions aloud, with word-paced reading and an optional **Natural flow** mode for complete sentences. No build step, account, API key, or subscription is required.
 
 ## Install in Chrome
 
-Download `protobowl-voice-1.0.0.zip` from this repository's **Releases** page and extract it, or download the source code.
+Download `protobowl-voice-1.1.0.zip` from this repository's **Releases** page and extract it, or download the source code.
 
 1. Open `chrome://extensions`.
 2. Turn on **Developer mode** in the upper-right corner.
@@ -22,14 +22,17 @@ Reading is enabled by default. **Automatic** favors natural/enhanced English voi
 - **Timing adjustment:** positive values start speech earlier; negative values start it later. The default is **80 ms earlier**, in addition to the estimated duration needed to finish the first word at its reveal.
 - **Volume:** controls extension speech.
 - **Read along:** turns reading on or off. The small **Voice** button in the room also toggles it.
+- **Natural flow:** off by default. Turn it on to speak each complete sentence in one continuous utterance, aiming to finish when its final word appears. The voice chooses the rhythm and pauses inside the sentence; individual words are no longer aligned to their reveals. The pace is chosen once per sentence, and the timing slider adjusts its finish target. Very fast rooms still require faster speech. After joining midway or a buzz, reading resumes with the remaining part of the sentence.
 
 Speech stops for buzzes, room pauses, finished questions, navigation, and inactive tabs. After a pause or when joining midway, it resumes near the current word instead of reciting old clues. Settings apply to all ProtoBowl tabs. Use one active ProtoBowl tab for listening.
 
 ## Timing and naturalness
 
-The extension reads the question and reveal schedule already present in ProtoBowl's browser client. It uses upcoming words in short phrases to preserve phrasing and begin before the visual reveal. It estimates speech duration and learns startup latency and speech speed from playback events. It never changes the room's reveal speed or buzz rules.
+The extension reads the question and reveal schedule already present in ProtoBowl's browser client. The default mode uses upcoming words in short phrases. Natural flow uses the rest of the current sentence to preserve its phrasing and targets the final word's reveal time. This means some words may be heard before or after their own visual reveals. It estimates speech duration and learns startup latency and speech speed from playback events. It never changes the room's reveal speed or buzz rules.
 
-**This aims for word-end alignment, but cannot guarantee exact synchronization or multiplayer fairness.** Chrome TTS provides playback events and a rate control, not exact word durations or a sample-accurate scheduling interface. Speech may land a little early or late, especially on the first phrase, unusual names, very fast rooms, or voices that lack timing events. Short phrase boundaries can be audible. A lower room speed generally makes speech easier to follow; the extension does not change it for you. The maximum catch-up speech rate is 3.5×.
+**Word and sentence finish targets are approximate; exact synchronization or multiplayer fairness cannot be guaranteed.** Chrome TTS provides playback events and a rate control, not exact word durations or a sample-accurate scheduling interface. Speech may land a little early or late, especially on the first utterance, unusual names, very fast rooms, or voices that lack timing events. The default mode's short phrase boundaries can be audible; Natural flow avoids those breaks within ordinary sentences. Extremely long text exceeding the 32,000-character utterance limit is split at a word boundary. A lower room speed generally makes speech easier to follow; the extension does not change it for you. The maximum speech rate is 3.5×.
+
+To update an existing unpacked installation, replace its files with the new release, click **Reload** on its card at `chrome://extensions`, and refresh ProtoBowl. Existing settings are preserved and Natural flow starts off until enabled.
 
 The implementation uses the live ProtoBowl client's room interface. If the site changes that interface, the extension stops reading and reports that it is waiting instead of guessing from unrelated page text.
 

@@ -12,7 +12,7 @@ const snapshot = (question, overrides = {}) => ({
 test('settings sanitize persisted values and clamp timing and audio controls', () => {
   assert.deepEqual(core.settings({ enabled: false, rate: 8, volume: -1, leadMs: 999,
     voiceName: 'a'.repeat(240) }), {
-    enabled: false, rate: 1.5, volume: 0, leadMs: 300, voiceName: 'a'.repeat(200),
+    enabled: false, naturalFlow: false, rate: 1.5, volume: 0, leadMs: 300, voiceName: 'a'.repeat(200),
   });
   assert.deepEqual(core.settings({ rate: NaN, volume: Infinity, leadMs: '100', enabled: 'no' }),
     core.DEFAULTS);

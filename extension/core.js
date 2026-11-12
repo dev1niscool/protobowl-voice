@@ -1,12 +1,14 @@
 /* Shared pure timing logic. No network calls, page access, or audio side effects. */
 ((root) => {
   "use strict";
-  const DEFAULTS = Object.freeze({ enabled: true, voiceName: "", rate: 1, volume: 1, leadMs: 80 });
+  const DEFAULTS = Object.freeze({ enabled: true, naturalFlow: false, voiceName: "", rate: 1, volume: 1, leadMs: 80 });
+  const MAX_SENTENCE_LENGTH = 32000;
   const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
   function settings(value = {}) {
     if (!value || typeof value !== "object") value = {};
     const number = (key, min, max) => Number.isFinite(value[key]) ? clamp(value[key], min, max) : DEFAULTS[key];
     return { enabled: typeof value.enabled === "boolean" ? value.enabled : true,
+      naturalFlow: value.naturalFlow === true,
       voiceName: typeof value.voiceName === "string" ? value.voiceName.slice(0, 200) : "",
       rate: number("rate", .7, 1.5), volume: number("volume", 0, 1), leadMs: number("leadMs", -150, 300) };
   }
@@ -34,6 +36,7 @@
     return i < 0 ? s.cumulative.length : i;
   }
   function makePhrase(s, index, prefs, calibration = {}) {
+    if (prefs.naturalFlow) return makeSentence(s, index, prefs, calibration);
     const words = s.question.split(" ");
     while (index < words.length && !cleanWord(words[index])) index++;
     if (index >= words.length) return null;
@@ -67,6 +70,71 @@
     return { text, items, first, last, nextIndex: end, rate, startAt,
       estimatedMs: duration / rate, targetEnd: s.cumulative[last] - lead };
   }
+  function sentenceRanges(words) {
+    const ranges = [];
+    let start = 0;
+    for (let i = 0; i < words.length; i++) {
+      const word = cleanWord(words[i]).replace(/["'’”\)\]]+$/u, "");
+      let ends = /[.!?]$/u.test(word);
+      if (/\.$/u.test(word) && !/[!?]/u.test(word)) {
+        const next = words.slice(i + 1).find(w => cleanWord(w));
+        // Titles, initials, dotted abbreviations, and dates belong to the
+        // sentence around them. Decimal points inside tokens never end it.
+        const title = /^(?:Mr|Mrs|Ms|Dr|Prof|Rev|St|Mt|Gen|Sgt|Capt|Lt|Col|Maj|Sen|Rep|Gov|Pres|Hon|Sr|Jr|No|vs|e\.g|i\.e|cf|Fig|Vol|pp)\.$/i.test(word);
+        const initial = /^[A-Z]\.$/.test(word) && /^["'“‘(]*[A-Z]/.test(next);
+        const dotted = /^(?:[A-Za-z]\.){2,}$/.test(word);
+        const date = /^(?:Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.$/i.test(word) && /^\d/.test(next);
+        const sentenceStarter = /^(?:This|That|These|Those|The|He|She|It|They|We|I|His|Her|Their|Its|After|Before|When|While|During|Although|However|Another|In|At|For|As|On|By|From|There|Such)\b/.test((next || "").replace(/^["'“‘(]+/u, ""));
+        const abbreviationAtEnd = sentenceStarter &&
+          (/^(?:Jr|Sr)\.$/i.test(word) || (dotted && !/^(?:e\.g|i\.e)\.$/i.test(word)));
+        if (next && (title || initial || dotted || date) && !abbreviationAtEnd) ends = false;
+      }
+      if (ends || i === words.length - 1) {
+        ranges.push({ start, end: i + 1 });
+        start = i + 1;
+      }
+    }
+    return ranges;
+  }
+  function makeSentence(s, index, prefs, calibration = {}) {
+    const words = s.question.split(" ");
+    const ranges = sentenceRanges(words);
+    for (const range of ranges) {
+      if (range.end <= index) continue;
+      const items = [];
+      let text = "";
+      let end = Math.max(index, range.start);
+      for (; end < range.end; end++) {
+        const word = cleanWord(words[end]);
+        if (!word) continue;
+        // Only extreme inputs hit the engine safety limit. Ordinary sentences
+        // are never broken up by word count, clause punctuation, or duration.
+        if (items.length && text.length + 1 + word.length > MAX_SENTENCE_LENGTH) break;
+        if (text) text += " ";
+        items.push({ index: end, charIndex: text.length, text: word });
+        text += word;
+      }
+      if (!items.length) continue;
+      const first = items[0].index;
+      const last = items.at(-1).index;
+      const targetEnd = s.cumulative[last] - prefs.leadMs;
+      if (s.elapsed > targetEnd + 800) continue; // Drop an expired sentence, not its opening words while waiting.
+      const factor = clamp(calibration.factor || 1, .5, 2);
+      const latency = clamp(calibration.latency ?? 90, 0, 500);
+      const duration = items.reduce((sum, w) => sum + baseDuration(w.text), 0) * factor;
+      const earliest = range.start ? s.cumulative[range.start - 1] - prefs.leadMs : 0;
+      const available = Math.max(100, targetEnd - Math.max(earliest, s.elapsed) - latency);
+      // Prefer the user's natural pace. If the room is faster, choose one
+      // constant sentence rate that fits the available window. No word gating
+      // or mid-sentence acceleration: the voice retains its own phrasing.
+      const rate = clamp(Math.max(prefs.rate, duration / available), .6, 3.5);
+      const estimatedMs = duration / rate;
+      const startAt = Math.max(earliest, targetEnd - estimatedMs - latency);
+      return { mode: "sentence", text, items, first, last, nextIndex: end, rate,
+        startAt, estimatedMs, targetEnd };
+    }
+    return null;
+  }
   function chooseVoice(voices, requested) {
     const exact = voices.find(v => v.voiceName === requested);
     if (exact) return exact;
@@ -78,7 +146,7 @@
       (/novelty|whisper|bells|boing|bubbles|trinoids|zarvox|bad news|good news|cellos|organ|hysterical/i.test(v.voiceName) ? 150 : 0);
     return [...voices].sort((a, b) => score(b) - score(a))[0];
   }
-  const api = { DEFAULTS, clamp, settings, validSnapshot, cleanWord, baseDuration, firstUnread, makePhrase, chooseVoice };
+  const api = { DEFAULTS, MAX_SENTENCE_LENGTH, clamp, settings, validSnapshot, cleanWord, baseDuration, firstUnread, makePhrase, makeSentence, chooseVoice };
   root.ProtoVoice = api;
   if (typeof module !== "undefined") module.exports = api;
 })(globalThis);

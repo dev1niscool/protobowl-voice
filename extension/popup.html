@@ -16,7 +16,7 @@
           </svg>
         </div>
         <div><p class="eyebrow">THE QUESTION, OUT LOUD</p><h1>ProtoBowl <span>Voice</span></h1></div>
-        <span class="version">1.0</span>
+        <span class="version">1.1</span>
       </header>
 
       <section class="reader-card" aria-labelledby="reader-label">
@@ -24,6 +24,16 @@
           <div><h2 id="reader-label">Read along</h2><p>Follow each question as it appears.</p></div>
           <label class="switch" title="Enable question speech">
             <input id="enabled" type="checkbox" aria-label="Enable question speech">
+            <span class="switch-track" aria-hidden="true"></span>
+          </label>
+        </div>
+        <div class="natural-flow-row">
+          <div>
+            <label id="natural-flow-label" for="natural-flow">Natural flow</label>
+            <p id="natural-flow-note">Speak whole sentences, finishing as the final word appears.</p>
+          </div>
+          <label class="switch" title="Enable natural sentence flow">
+            <input id="natural-flow" type="checkbox" role="switch" aria-labelledby="natural-flow-label" aria-describedby="natural-flow-note">
             <span class="switch-track" aria-hidden="true"></span>
           </label>
         </div>

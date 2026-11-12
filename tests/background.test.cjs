@@ -158,6 +158,23 @@ test('the real popup URL can invoke actions both as a popup and in an extension 
   }
 });
 
+test('full sentences above the phrase cap require explicit Natural flow and respect the engine limit', async () => {
+  const env = setup();
+  const text = 'A sentence can retain its natural rhythm across many words, '.repeat(12) + 'until it ends.';
+  assert.ok(text.length > 500);
+  for (const naturalFlow of [false, undefined, 'true']) {
+    assert.equal((await env.send({ type: 'speak', id: 'blocked', text, naturalFlow })).ok, false);
+  }
+  const pending = env.send({ type: 'speak', id: 'sentence', text, naturalFlow: true });
+  await env.flush();
+  assert.equal(env.calls.speak.length, 1);
+  assert.equal(env.calls.speak[0].text, text);
+  env.calls.speak[0].callback();
+  assert.equal((await pending).ok, true);
+  assert.equal((await env.send({ type: 'speak', text: 'x'.repeat(32001), naturalFlow: true })).ok, false);
+  assert.equal(env.calls.stop, 0, 'invalid oversized requests do not interrupt valid speech');
+});
+
 test('silent warmup yields to real speech and cannot interrupt speech or preview', async () => {
   const env = setup();
   const warmup = env.send({ type: 'warmup', voiceName: 'Samantha Enhanced' });

@@ -27,7 +27,8 @@ function stop(tabId) {
 
 async function speak(message, tabId, preview = false) {
   if (!preview && Date.now() < previewUntil) return { ok: false, busy: true };
-  if (typeof message.text !== "string" || !message.text.trim() || message.text.length > 500) return { ok: false, error: "Invalid speech text" };
+  const maxLength = message.naturalFlow === true ? ProtoVoice.MAX_SENTENCE_LENGTH : 500;
+  if (typeof message.text !== "string" || !message.text.trim() || message.text.length > maxLength) return { ok: false, error: "Invalid speech text" };
   stop();
   const generation = ++serial;
   current = { tabId, id: message.id, generation };

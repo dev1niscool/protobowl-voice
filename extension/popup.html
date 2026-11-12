@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ProtoBowl Voice</title>
+    <link rel="stylesheet" href="popup.css">
+    <script src="popup.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <header class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg width="25" height="25" viewBox="0 0 25 25" fill="none">
+            <path d="M4 10v5m4-9v13m4-16v19m4-16v13m4-9v5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div><p class="eyebrow">THE QUESTION, OUT LOUD</p><h1>ProtoBowl <span>Voice</span></h1></div>
+        <span class="version">1.0</span>
+      </header>
+
+      <section class="reader-card" aria-labelledby="reader-label">
+        <div class="reader-top">
+          <div><h2 id="reader-label">Read along</h2><p>Follow each question as it appears.</p></div>
+          <label class="switch" title="Enable question speech">
+            <input id="enabled" type="checkbox" aria-label="Enable question speech">
+            <span class="switch-track" aria-hidden="true"></span>
+          </label>
+        </div>
+        <div class="status" role="status" aria-live="polite">
+          <span id="status-dot" class="status-dot"></span>
+          <span id="status-text">Connecting…</span>
+        </div>
+      </section>
+
+      <section class="controls" aria-label="Speech settings">
+        <div class="label-row"><label for="voice">Voice</label><span class="quiet">Your available voices</span></div>
+        <div class="voice-row">
+          <select id="voice" aria-describedby="voice-note"><option value="">Automatic · best available</option></select>
+          <button id="preview" type="button" aria-label="Test selected voice" title="Test selected voice">
+            <svg id="preview-icon" aria-hidden="true" width="16" height="16" viewBox="0 0 16 16"><path d="M5 3.5 12 8l-7 4.5z" fill="currentColor"/></svg>
+            <span id="preview-label">Test</span>
+          </button>
+        </div>
+        <p id="voice-note" class="help">Natural voice quality depends on the voices installed in your browser and system.</p>
+
+        <div class="slider-control">
+          <div class="label-row"><label for="rate">Speech pace</label><output id="rate-value" for="rate">1.00×</output></div>
+          <input id="rate" type="range" min="0.7" max="1.5" step="0.05" value="1">
+          <div class="range-labels"><span>Slower</span><span>Faster</span></div>
+        </div>
+
+        <div class="slider-control">
+          <div class="label-row"><label for="lead">Timing adjustment</label><output id="lead-value" for="lead">80 ms earlier</output></div>
+          <input id="lead" type="range" min="-150" max="300" step="10" value="80" aria-describedby="timing-note">
+          <div class="range-labels"><span>Later</span><span>Earlier</span></div>
+          <p id="timing-note" class="help">Speech aims to finish each word as it appears. Timing varies by voice.</p>
+        </div>
+
+        <div class="slider-control volume-control">
+          <div class="label-row"><label for="volume">Volume</label><output id="volume-value" for="volume">100%</output></div>
+          <input id="volume" type="range" min="0" max="1" step="0.05" value="1">
+        </div>
+      </section>
+
+      <p id="error" class="error" role="alert" hidden></p>
+      <p class="alignment-note">Uses upcoming question words for smoother speech and reveal alignment.</p>
+      <footer><a href="https://protobowl.com/" target="_blank" rel="noopener">Open ProtoBowl <span aria-hidden="true">↗</span></a><span>Ready for the next clue.</span></footer>
+    </main>
+  </body>
+</html>

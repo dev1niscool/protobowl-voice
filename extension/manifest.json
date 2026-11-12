@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "ProtoBowl Voice",
+  "version": "1.0.0",
+  "description": "Natural voice reading paced to ProtoBowl's question reveal, with adjustable timing and automatic buzz interruption.",
+  "minimum_chrome_version": "111",
+  "permissions": ["storage", "tts"],
+  "background": {"service_worker": "background.js"},
+  "action": {"default_title": "ProtoBowl Voice", "default_popup": "popup.html"},
+  "icons": {"16": "icons/16.png", "48": "icons/48.png", "128": "icons/128.png"},
+  "content_scripts": [
+    {
+      "matches": ["https://protobowl.com/*", "https://*.protobowl.com/*", "http://protobowl.com/*", "http://*.protobowl.com/*"],
+      "js": ["bridge.js"], "run_at": "document_start", "world": "MAIN"
+    },
+    {
+      "matches": ["https://protobowl.com/*", "https://*.protobowl.com/*", "http://protobowl.com/*", "http://*.protobowl.com/*"],
+      "js": ["core.js", "content.js"], "run_at": "document_start"
+    }
+  ]
+}

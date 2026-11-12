@@ -4,13 +4,15 @@ A Chrome extension that reads ProtoBowl questions aloud in short, flowing phrase
 
 ## Install in Chrome
 
+Download `protobowl-voice-1.0.0.zip` from this repository's **Releases** page and extract it, or download the source code.
+
 1. Open `chrome://extensions`.
 2. Turn on **Developer mode** in the upper-right corner.
 3. Click **Load unpacked** and select the `extension` folder in this project.
 4. Refresh your existing ProtoBowl tabs, or open [ProtoBowl](https://protobowl.com/) and join a room.
 5. Pin **ProtoBowl Voice** from Chrome's Extensions menu. Open it to choose a voice and press **Test**.
 
-If using the ZIP in `dist`, extract it first and load the extracted folder containing `manifest.json`. Keep that folder in place while the extension is installed.
+If using the release ZIP, select the extracted folder containing `manifest.json` at step 3. Keep that folder in place while the extension is installed.
 
 ## Use
 

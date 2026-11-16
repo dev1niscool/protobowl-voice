@@ -141,7 +141,7 @@ async function loadVoices() {
 
 async function initialize() {
   if (speechTransport) {
-    $("alignment-note").textContent = "Safari: click Voice in the room once to allow audio. Each new page may need a click.";
+    $("alignment-note").textContent = "Safari: click Voice or start a question to allow audio. Each new page may need a click.";
   }
   try {
     const stored = await chrome.storage.local.get("settings");

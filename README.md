@@ -23,7 +23,7 @@ Requires **Safari 18 or later** on **macOS 13 or later**. The Mac app supports b
 3. In Safari, open **Settings > Advanced**, then enable **Show features for web developers** (older versions call this **Show Develop menu**).
 4. In **Settings > Developer**, select **Allow unsigned extensions**. Some versions put this option in the **Develop** menu. Safari may reset it when it quits.
 5. Open **Settings > Extensions**, enable **ProtoBowl Voice**, and allow access to `protobowl.com`.
-6. Refresh ProtoBowl. Click the small **Voice · Click to start** button in the room once to allow speech on that page. Open the toolbar popup to select a voice, test it, or enable **Natural flow**.
+6. Refresh ProtoBowl. Click **Start the Question**, another room control, or the small **Voice · Click to start** button once to allow speech on that page. Open the toolbar popup to select a voice, test it, or enable **Natural flow**.
 
 If your Safari offers **Settings > Developer > Add Temporary Extension**, you can instead extract `protobowl-voice-safari-extension-1.2.0.zip` and select its folder containing `manifest.json`. Temporary installations may be removed when Safari quits. The runtime ZIP cannot be installed by double-clicking it.
 
@@ -73,7 +73,7 @@ npm test
 python3 scripts/package.py
 ```
 
-The automated tests cover the real page adapter, scheduling bounds, UTF-16 word offsets, settings validation, cancellation races, buzz/pause/resume, and speech ownership. Browser smoke testing loaded the unpacked extension in Chrome for Testing against a dedicated live ProtoBowl room, verified voice enumeration and real TTS callbacks, and exercised buzz interruption. Audio was muted for that automated check: it verifies integration, not subjective voice quality or an exact audible alignment guarantee.
+The automated tests cover the real page adapter, scheduling bounds, UTF-16 word offsets, settings validation, cancellation races, buzz/pause/resume, and speech ownership. Browser smoke testing loaded the unpacked extension in Chrome for Testing against a dedicated live ProtoBowl room, verified voice enumeration and real TTS callbacks, and exercised buzz interruption. Audio was muted for that automated Chrome check. Safari verification exercised the packaged Mac app, saved Natural flow setting, live ProtoBowl reading, pause/resume, and buzz interruption. A separate muted Safari fixture verified real Web Speech start, word, and completion callbacks. These checks verify integration, not subjective voice quality or an exact audible alignment guarantee.
 
 The runtime is intentionally dependency-free:
 

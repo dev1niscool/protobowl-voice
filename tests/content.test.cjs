@@ -21,6 +21,10 @@ async function fixture({ settings = {}, send, transport, roomControl = false } =
   const listenerSources = [];
   let locked = transport?.locked === true;
   let unlocks = 0;
+  class TestElement {
+    constructor(selector) { this.selector = selector; }
+    closest(selector) { return selector === this.selector ? this : null; }
+  }
   const on = (name, listener) => events.set(name, [...(events.get(name) || []), listener]);
   const window = { addEventListener: on };
   const button = {
@@ -66,7 +70,7 @@ async function fixture({ settings = {}, send, transport, roomControl = false } =
     location: { origin: 'https://protobowl.com', pathname: roomControl ? '/test-room' : '/' },
     performance: { now: () => now },
     Date: { now: () => now },
-    Element: class Element {},
+    Element: TestElement,
     setInterval(callback) { heartbeat = callback; },
   });
   vm.runInContext(coreSource, context, { filename: 'core.js' });
@@ -76,6 +80,7 @@ async function fixture({ settings = {}, send, transport, roomControl = false } =
     sent, document, chromeSent, listenerSources, storageWrites, button,
     get unlocks() { return unlocks; },
     clickVoice() { button.listeners.click(); },
+    element(selector) { return new TestElement(selector); },
     get speeches() { return sent.filter(message => message.type === 'speak'); },
     get stops() { return sent.filter(message => message.type === 'stop'); },
     get status() { return sent.filter(message => message.type === 'report-status').at(-1); },
@@ -464,6 +469,9 @@ test('Safari waits for a room gesture and the first Voice click starts audio wit
   assert.deepEqual(f.listenerSources, ['safari']);
   assert.equal(f.chromeSent.length, 0, 'speech and status use the Safari adapter');
 
+  // The document's capture listener sees the chip host before its own click.
+  f.emit('click', { target: f.element('#protobowl-voice-control'), isTrusted: true });
+  assert.equal(f.unlocks, 0, 'the room-level gesture listener leaves chip clicks to the chip');
   f.clickVoice();
   assert.equal(f.unlocks, 1, 'audio is unlocked synchronously by the button gesture');
   assert.equal(f.storageWrites.at(-1).settings.enabled, true);
@@ -487,6 +495,37 @@ test('Safari keeps an explicitly disabled reader off while its audio is still lo
   assert.equal(f.unlocks, 0);
   assert.equal(f.status.status, 'Off');
   assert.equal(f.button.attributes['aria-pressed'], 'false');
+});
+
+test('a trusted room click unlocks Safari reading once without requiring a separate Voice click', async () => {
+  const f = await fixture({ transport: { locked: true } });
+  f.snapshot();
+  assert.equal(f.speeches.length, 0);
+  f.emit('click', { target: f.element('.nextbtn'), isTrusted: true });
+  assert.equal(f.unlocks, 1);
+  assert.equal(f.speeches.length, 1);
+  assert.equal(f.status.status, 'Reading');
+  f.emit('click', { target: f.element('.nextbtn'), isTrusted: true });
+  assert.equal(f.unlocks, 1);
+  assert.equal(f.speeches.length, 1);
+});
+
+test('synthetic room clicks and trusted clicks while disabled cannot unlock Safari speech', async t => {
+  for (const [name, settings, isTrusted] of [
+    ['synthetic click', { enabled: true }, false],
+    ['missing trust flag', { enabled: true }, undefined],
+    ['reader disabled', { enabled: false }, true],
+  ]) {
+    await t.test(name, async () => {
+      const f = await fixture({ settings, transport: { locked: true } });
+      f.snapshot();
+      f.emit('click', { target: f.element('.nextbtn'), isTrusted });
+      f.heartbeat();
+      assert.equal(f.unlocks, 0);
+      assert.equal(f.speeches.length, 0);
+      if (settings.enabled === false) assert.equal(f.status.status, 'Off');
+    });
+  }
 });
 
 test('Safari playback events retain the spoken boundary through a natural sentence buzz and resume', async () => {

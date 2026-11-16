@@ -96,7 +96,7 @@
     if (!loaded || disconnected) return;
     if (!prefs.enabled) { cancel(); updateStatus("Off", "Enable Voice to read new question words."); return; }
     if (document.hidden) { cancel(); rejoin(); updateStatus("Tab inactive", "Speech resumes at the current word when you return."); return; }
-    if (transport?.requiresGesture()) { cancel(); updateStatus("Click to start", "Click this Voice button once to allow Safari audio on this page."); return; }
+    if (transport?.requiresGesture()) { cancel(); updateStatus("Click to start", "Click Voice or start a question to allow Safari audio on this page."); return; }
     if (!latest || performance.now() - receivedAt > 1200) {
       cancel(); updateStatus("Waiting", "Waiting for ProtoBowl's question timing. Start a question or refresh the room."); return;
     }
@@ -226,6 +226,15 @@
     if (!input && (event.code === "Space" || event.code === "KeyB")) { cancel(true); retryAt = Date.now() + 300; }
   }, true);
   document.addEventListener("click", event => {
+    // A normal game interaction can grant Safari audio activation as well.
+    // The chip handles its own click so its first activation never mutes it.
+    const control = event.target instanceof Element && event.target.closest("#protobowl-voice-control");
+    if (transport?.requiresGesture() && prefs.enabled && event.isTrusted && !control) {
+      transport.unlock();
+      retryAt = 0;
+      error = "";
+      tick();
+    }
     if (event.target instanceof Element && event.target.closest(".buzzbtn")) { cancel(true); retryAt = Date.now() + 300; }
   }, true);
   chrome.storage.local.get("settings").then(data => {

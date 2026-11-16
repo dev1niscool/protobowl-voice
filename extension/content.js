@@ -1,6 +1,7 @@
 (() => {
   "use strict";
   const C = ProtoVoice;
+  const transport = globalThis.ProtoVoiceTransport || null;
   let prefs = C.settings();
   let loaded = false;
   let latest = null;
@@ -23,7 +24,7 @@
 
   async function message(data) {
     if (disconnected) return null;
-    try { return await chrome.runtime.sendMessage(data); }
+    try { return await (transport ? transport.send(data) : chrome.runtime.sendMessage(data)); }
     catch (_) {
       disconnected = true;
       error = "Extension updated. Refresh this room.";
@@ -49,6 +50,17 @@
       </style><button type="button"><i aria-hidden="true"></i><span></span></button>`;
       chip = shadow.querySelector("button");
       chip.addEventListener("click", () => {
+        if (transport?.requiresGesture()) {
+          // Safari must begin synthesis inside this click's user activation.
+          transport.unlock();
+          prefs = { ...prefs, enabled: true };
+          chrome.storage.local.set({ settings: prefs }).catch(() => {});
+          retryAt = 0;
+          error = "";
+          rejoin();
+          tick();
+          return;
+        }
         prefs = { ...prefs, enabled: !prefs.enabled };
         chrome.storage.local.set({ settings: prefs }).catch(() => {});
         if (!prefs.enabled) cancel();
@@ -59,8 +71,9 @@
     if (chip) {
       chip.querySelector("span").textContent = `Voice · ${status}`;
       chip.setAttribute("aria-pressed", String(prefs.enabled));
-      chip.setAttribute("aria-label", `${prefs.enabled ? "Disable" : "Enable"} ProtoBowl Voice. ${status}`);
-      chip.title = `${detail || status}\nClick to ${prefs.enabled ? "mute" : "enable"}. Voice and timing controls are in the extension popup.`;
+      const action = transport?.requiresGesture() ? "Start" : prefs.enabled ? "Disable" : "Enable";
+      chip.setAttribute("aria-label", `${action} ProtoBowl Voice. ${status}`);
+      chip.title = `${detail || status}\nClick to ${action.toLowerCase()} speech. Voice and timing controls are in the extension popup.`;
     }
     if (!disconnected && (full !== reportedStatus || performance.now() - reportedAt > 1000)) {
       reportedStatus = full;
@@ -83,6 +96,7 @@
     if (!loaded || disconnected) return;
     if (!prefs.enabled) { cancel(); updateStatus("Off", "Enable Voice to read new question words."); return; }
     if (document.hidden) { cancel(); rejoin(); updateStatus("Tab inactive", "Speech resumes at the current word when you return."); return; }
+    if (transport?.requiresGesture()) { cancel(); updateStatus("Click to start", "Click this Voice button once to allow Safari audio on this page."); return; }
     if (!latest || performance.now() - receivedAt > 1200) {
       cancel(); updateStatus("Waiting", "Waiting for ProtoBowl's question timing. Start a question or refresh the room."); return;
     }
@@ -150,7 +164,7 @@
     receivedAt = performance.now();
     tick();
   });
-  chrome.runtime.onMessage.addListener(message => {
+  const onSpeechMessage = message => {
     if (message.type === "preview-start") { cancel(); previewUntil = Date.now() + 8000; return; }
     if (message.type === "preview-end") { previewUntil = 0; rejoin(); tick(); return; }
     if (message.type !== "speech-event" || !active || message.id !== active.id) return;
@@ -190,7 +204,9 @@
       rejoin();
       if (event.type === "error") { error = event.errorMessage || "The selected voice could not speak."; retryAt = Date.now() + 4000; }
     }
-  });
+  };
+  if (transport) transport.onMessage(onSpeechMessage);
+  else chrome.runtime.onMessage.addListener(onSpeechMessage);
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local" || !changes.settings) return;
     cancel();

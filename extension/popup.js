@@ -1,6 +1,8 @@
 "use strict";
 
-// Keep this UI independent of the page: playback is owned by the service worker.
+// Safari supplies a local speech adapter; Chrome uses its TTS service worker.
+const speechTransport = globalThis.ProtoVoicePopupTransport;
+const send = data => speechTransport ? speechTransport.send(data) : chrome.runtime.sendMessage(data);
 const DEFAULTS = { enabled: true, naturalFlow: false, voiceName: "", rate: 1, volume: 1, leadMs: 80 };
 const $ = (id) => document.getElementById(id);
 let settings = { ...DEFAULTS };
@@ -8,6 +10,7 @@ let previewing = false;
 let previewTimer;
 let saveTimer;
 let statusRequest = false;
+let voiceRequest = 0;
 
 function error(message = "") {
   $("error").textContent = message;
@@ -55,11 +58,12 @@ async function preview() {
   const stop = previewing;
   $("preview").disabled = true;
   try {
-    const result = await chrome.runtime.sendMessage(stop ? { type: "stop-preview" } : { type: "preview", settings: { ...settings } });
+    // Call directly from the click so Safari retains the audio user gesture.
+    const result = await send(stop ? { type: "stop-preview" } : { type: "preview", settings: { ...settings } });
     if (result?.ok === false || result?.error) throw new Error(result.error || "The selected voice is unavailable.");
     error();
     setPreviewing(!stop);
-    // The worker owns the utterance and it may finish after this popup closes.
+    // A short timer restores the button if the engine has no completion event.
     if (!stop) previewTimer = setTimeout(() => setPreviewing(false), 6500);
   } catch (cause) {
     setPreviewing(false);
@@ -90,7 +94,7 @@ async function refreshStatus() {
   if (statusRequest) return;
   statusRequest = true;
   try {
-    const state = await chrome.runtime.sendMessage({ type: "status" });
+    const state = await send({ type: "status" });
     const raw = state?.status || "idle";
     const key = settings.enabled ? raw.toLowerCase() : "disabled";
     $("status-text").textContent = STATUS_LABELS[key] || raw;
@@ -105,7 +109,9 @@ async function refreshStatus() {
 }
 
 async function loadVoices() {
-  const response = await chrome.runtime.sendMessage({ type: "voices" });
+  const request = ++voiceRequest;
+  const response = await send({ type: "voices" });
+  if (request !== voiceRequest) return;
   if (response?.error) throw new Error(response.error);
   const voices = (response?.voices || []).filter((voice) => typeof voice.voiceName === "string");
   const names = new Set();
@@ -113,6 +119,9 @@ async function loadVoices() {
     const english = Number(/^en/i.test(b.lang || "")) - Number(/^en/i.test(a.lang || ""));
     return english || a.voiceName.localeCompare(b.voiceName);
   });
+  // Web Speech may discover installed voices after the popup first opens.
+  // Keep Automatic and rebuild the list without losing the saved preference.
+  $("voice").replaceChildren($("voice").options[0]);
   for (const voice of voices) {
     if (names.has(voice.voiceName)) continue;
     names.add(voice.voiceName);
@@ -131,10 +140,16 @@ async function loadVoices() {
 }
 
 async function initialize() {
+  if (speechTransport) {
+    $("alignment-note").textContent = "Safari: click Voice in the room once to allow audio. Each new page may need a click.";
+  }
   try {
     const stored = await chrome.storage.local.get("settings");
     settings = { ...DEFAULTS, ...(stored.settings || {}) };
     paintValues();
+    speechTransport?.onVoicesChanged?.(() => {
+      loadVoices().catch(cause => error(`Could not refresh voices. ${cause.message || "Try reopening the extension."}`));
+    });
     await Promise.all([loadVoices(), refreshStatus()]);
   } catch (cause) {
     paintValues();

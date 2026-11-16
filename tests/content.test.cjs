@@ -9,36 +9,61 @@ const contentSource = fs.readFileSync(path.join(__dirname, '../extension/content
 const words = 'alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima mike november oscar papa';
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
-async function fixture({ settings = {}, send } = {}) {
+async function fixture({ settings = {}, send, transport, roomControl = false } = {}) {
   let now = 0;
   let heartbeat;
   let speechListener;
   let storageListener;
   const events = new Map();
   const sent = [];
+  const chromeSent = [];
+  const storageWrites = [];
+  const listenerSources = [];
+  let locked = transport?.locked === true;
+  let unlocks = 0;
   const on = (name, listener) => events.set(name, [...(events.get(name) || []), listener]);
   const window = { addEventListener: on };
-  const document = { body: null, hidden: false, addEventListener: on };
+  const button = {
+    attributes: {}, listeners: {}, span: {},
+    addEventListener(name, listener) { this.listeners[name] = listener; },
+    setAttribute(name, value) { this.attributes[name] = value; },
+    querySelector() { return this.span; },
+  };
+  const document = {
+    body: roomControl ? { append() {} } : null,
+    hidden: false, addEventListener: on,
+    createElement() { return { attachShadow: () => ({ querySelector: () => button }) }; },
+  };
+  function deliver(message) {
+    sent.push(message);
+    if (send) {
+      const result = send(message);
+      if (result !== undefined) return result;
+    }
+    return Promise.resolve(message.type === 'speak' ? { ok: true, voiceName: 'Test voice' } : { ok: true });
+  }
   const chrome = {
     runtime: {
       sendMessage(message) {
-        sent.push(message);
-        if (send) {
-          const result = send(message);
-          if (result !== undefined) return result;
-        }
-        return Promise.resolve(message.type === 'speak' ? { ok: true, voiceName: 'Test voice' } : { ok: true });
+        chromeSent.push(message);
+        return deliver(message);
       },
-      onMessage: { addListener(listener) { speechListener = listener; } },
+      onMessage: { addListener(listener) { speechListener = listener; listenerSources.push('chrome'); } },
     },
     storage: {
-      local: { get: async () => ({ settings }), set: async () => {} },
+      local: { get: async () => ({ settings }), set: async value => { storageWrites.push(value); } },
       onChanged: { addListener(listener) { storageListener = listener; } },
     },
   };
   const context = vm.createContext({
     window, document, chrome,
-    location: { origin: 'https://protobowl.com', pathname: '/' },
+    ProtoVoiceTransport: transport ? {
+      send: deliver,
+      onMessage(listener) { speechListener = listener; listenerSources.push('safari'); },
+      requiresGesture: () => locked,
+      unlock() { unlocks++; locked = false; return true; },
+    } : undefined,
+    location: { origin: 'https://protobowl.com', pathname: roomControl ? '/test-room' : '/' },
     performance: { now: () => now },
     Date: { now: () => now },
     Element: class Element {},
@@ -48,7 +73,9 @@ async function fixture({ settings = {}, send } = {}) {
   vm.runInContext(contentSource, context, { filename: 'content.js' });
   await flush();
   return {
-    sent, document,
+    sent, document, chromeSent, listenerSources, storageWrites, button,
+    get unlocks() { return unlocks; },
+    clickVoice() { button.listeners.click(); },
     get speeches() { return sent.filter(message => message.type === 'speak'); },
     get stops() { return sent.filter(message => message.type === 'stop'); },
     get status() { return sent.filter(message => message.type === 'report-status').at(-1); },
@@ -427,4 +454,67 @@ test('a paused natural sentence resumes from the spoken boundary even when the v
   f.speech(old.id, 'end');
   f.heartbeat();
   assert.equal(f.speeches.length, 2);
+});
+
+test('Safari waits for a room gesture and the first Voice click starts audio without switching reading off', async () => {
+  const f = await fixture({ transport: { locked: true }, roomControl: true });
+  f.snapshot();
+  assert.equal(f.speeches.length, 0);
+  assert.match(f.status.status, /click|start|audio/i);
+  assert.deepEqual(f.listenerSources, ['safari']);
+  assert.equal(f.chromeSent.length, 0, 'speech and status use the Safari adapter');
+
+  f.clickVoice();
+  assert.equal(f.unlocks, 1, 'audio is unlocked synchronously by the button gesture');
+  assert.equal(f.storageWrites.at(-1).settings.enabled, true);
+  assert.equal(f.speeches.length, 1);
+  assert.equal(f.button.attributes['aria-pressed'], 'true');
+
+  f.clickVoice();
+  assert.equal(f.unlocks, 1);
+  assert.equal(f.storageWrites.at(-1).settings.enabled, false);
+  assert.equal(f.stops.length, 1);
+  assert.equal(f.status.status, 'Off');
+});
+
+test('Safari keeps an explicitly disabled reader off while its audio is still locked', async () => {
+  const f = await fixture({ settings: { enabled: false }, transport: { locked: true }, roomControl: true });
+  f.snapshot();
+  f.advance(600);
+  f.snapshot();
+  f.heartbeat();
+  assert.equal(f.speeches.length, 0);
+  assert.equal(f.unlocks, 0);
+  assert.equal(f.status.status, 'Off');
+  assert.equal(f.button.attributes['aria-pressed'], 'false');
+});
+
+test('Safari playback events retain the spoken boundary through a natural sentence buzz and resume', async () => {
+  const f = await fixture({ settings: { naturalFlow: true }, transport: { locked: false } });
+  const data = { question: `${words}.` };
+  f.snapshot(data);
+  const sentence = f.speeches[0];
+  f.speech(sentence.id, 'start');
+  f.advance(600);
+  f.speech(sentence.id, 'word', { charIndex: sentence.text.indexOf('charlie') });
+  f.snapshot({ ...data, paused: true, buzzing: true });
+  assert.equal(f.stops.length, 1);
+  f.advance(100);
+  f.snapshot({ ...data, elapsed: 600, paused: false, buzzing: false });
+  assert.equal(f.speeches.length, 2);
+  assert.equal(f.speeches[1].text, `${words.split(' ').slice(2).join(' ')}.`);
+  assert.equal(f.speeches[1].naturalFlow, true);
+  assert.equal(f.chromeSent.length, 0);
+  f.speech(sentence.id, 'end');
+  assert.equal(f.speeches.length, 2, 'late callbacks from canceled speech remain harmless');
+});
+
+test('Chrome room control still toggles an already enabled reader off on its first click', async () => {
+  const f = await fixture({ roomControl: true });
+  f.snapshot();
+  assert.deepEqual(f.listenerSources, ['chrome']);
+  f.clickVoice();
+  assert.equal(f.storageWrites.at(-1).settings.enabled, false);
+  assert.equal(f.stops.length, 1);
+  assert.equal(f.status.status, 'Off');
 });

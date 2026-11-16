@@ -1,0 +1,7 @@
+:root{font:14px/1.5 system-ui,sans-serif;color-scheme:dark;color:#e8f4ee;background:#10231e}
+*{box-sizing:border-box}body{margin:0;padding:30px}main{max-width:520px;margin:auto}
+.eyebrow{color:#80e6b8;font-size:11px;font-weight:650;letter-spacing:.14em}
+h1{font-size:29px;letter-spacing:-.04em;line-height:1.1;margin:12px 0 18px}
+p{color:#b7ccc1}ol{padding-left:22px;margin:24px 0}li{padding-left:5px;margin:13px 0}
+button{background:#80e6b8;color:#10231e;border:0;border-radius:9px;font:600 13px system-ui;padding:13px 18px;cursor:pointer}
+button:focus-visible{outline:3px solid white;outline-offset:4px}.footnote{font-size:11px;line-height:1.7;margin-top:20px}

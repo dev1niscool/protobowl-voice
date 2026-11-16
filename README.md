@@ -62,7 +62,7 @@ The implementation uses the live ProtoBowl client's room interface. If the site 
 
 Chrome permissions are limited to **storage**, **tts**, and content scripts on `protobowl.com` and its subdomains. Safari uses **storage** and the same site access; speech runs in the room using Web Speech. The extension does not read answers, chat, credentials, or other sites. It makes no network requests and contains no analytics or external scripts. Settings stay in local extension storage. Question text is sent to the selected speech engine; voices marked **online** may process text remotely under that engine's policy. Choose a local voice for on-device synthesis.
 
-Published files contain no personal account name, email, home-directory path, machine identifier, Apple developer team, provisioning profile, or signing certificate. Git commits use a generic author. Product identifiers needed by Safari are generic and shared by all installations. Release archives use fixed timestamps and omit local filesystem metadata. GitHub still identifies the repository owner and release publisher.
+Published files contain no personal account name, email, home-directory path, machine identifier, Apple developer team, provisioning profile, or signing certificate. Git commits use a generic author. Product identifiers needed by Safari are generic and shared by all installations. Packaged extension and app ZIPs use fixed timestamps and omit local filesystem metadata. The Mac package also omits unused asset catalogs that can contain incidental build timestamps. GitHub-generated source archives retain ordinary commit hashes and commit timestamps. GitHub still identifies the repository owner and release publisher.
 
 ## Development and verification
 

@@ -136,6 +136,11 @@ def main():
                            ("Style.css", "Style.css"), ("Script.js", "Script.js")]:
         if (bundled_resources / relative).read_bytes() != (NATIVE / name).read_bytes():
             raise SystemExit(f"The native app did not bundle the expected {name}.")
+    # The standalone icon is sufficient. The compiled catalog also embeds the
+    # build time and compiler version, so leave it out of distributed apps.
+    if not (bundled_resources / "AppIcon.icns").is_file():
+        raise SystemExit("The native app is missing its standalone icon.")
+    (bundled_resources / "Assets.car").unlink(missing_ok=True)
     for path in release_app.rglob("*"):
         if path.is_file():
             path.chmod(0o755 if path.parent.name == "MacOS" else 0o644)
@@ -144,6 +149,9 @@ def main():
             # These describe the build environment, not runtime requirements.
             info = {key: value for key, value in info.items()
                     if key != "BuildMachineOSBuild" and not key.startswith("DT")}
+            if path == release_app / "Contents" / "Info.plist":
+                info.pop("CFBundleIconName", None)
+                info["CFBundleIconFile"] = "AppIcon"
             path.write_bytes(plistlib.dumps(info, fmt=plistlib.FMT_BINARY, sort_keys=True))
     extension = release_app / "Contents" / "PlugIns" / f"{APP_NAME} Extension.appex"
     for label, bundle in [("extension", extension), ("app", release_app)]:
